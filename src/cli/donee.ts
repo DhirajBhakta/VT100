@@ -1,8 +1,8 @@
 import fetch from "isomorphic-fetch";
 import inquirer from "inquirer";
-import { red, green, bold, magenta, redBright } from "colorette";
-import { clearANSIFormatting, PseudoTerminal } from "../../utils/pty.js";
-import { RTCDoneePeer } from "../../utils/webrtc.js";
+import { red, green, bold } from "colorette";
+import { clearANSIFormatting, PseudoTerminal } from "../utils/pty.js";
+import { RTCDoneePeer } from "../utils/webrtc.js";
 import {
   getConsumerPreferences,
   setConsumerPreferences,
@@ -11,8 +11,8 @@ import {
   LIST_DONORS_ENDPOINT,
   DONOR_HEARTBEAT_ENDPOINT,
 } from "../config.js";
-import logger from "../../utils/log.js";
-import { Spinner } from "../../utils/log.js";
+import logger from "../utils/log.js";
+import { Spinner } from "../utils/log.js";
 import { CommanderImageAnswer } from "@types";
 
 const listRooms = async () => {
@@ -26,7 +26,7 @@ const listRooms = async () => {
   }
   const roomsMeta = (await response.json()).metrics;
   if (!roomsMeta.length) {
-    logger.error("No resources available ...onboard someone to Robinhood :P");
+    logger.error("No resources available ...onboard someone to vt100 :P");
     process.exit(1);
   }
   return roomsMeta;
@@ -68,7 +68,7 @@ const checkRoomAvailability = async (roomName: string) => {
   if (response.status !== 200) {
     console.log(
       red(
-        "Donor not available. Try checking for avaiable donors using `rh list`."
+        "Donor not available. Try checking for avaiable donors using `vt list`."
       )
     );
     process.exit(1);

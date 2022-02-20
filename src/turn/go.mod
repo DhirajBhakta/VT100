@@ -1,4 +1,4 @@
-module github.com/gandha9394/robinhood/src/turn/m
+module github.com/gandha9394/vt100/src/turn/m
 
 go 1.17
 

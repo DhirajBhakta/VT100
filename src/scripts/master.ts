@@ -1,7 +1,7 @@
 import minimist from "minimist";
-import logger from "../../utils/log.js";
-import { Terminal } from "../../utils/pty.js";
-import { RTCDonorPeer } from "../../utils/webrtc.js";
+import logger from "../utils/log.js";
+import { Terminal } from "../utils/pty.js";
+import { RTCDonorPeer } from "../utils/webrtc.js";
 import { CONTAINER_PREFIX, SIGNALING_SERVER } from "../config.js";
 import pty, { IPty } from "node-pty";
 /**

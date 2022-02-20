@@ -1,7 +1,7 @@
 import express from "express";
 import http from "http";
 import * as pkg from "webrtc.io";
-import logger from "../../utils/log.js";
+import logger from "../utils/log.js";
 import routes from "../express/broker-routes.js";
 
 const DEFAULT = {

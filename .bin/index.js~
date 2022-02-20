@@ -79,7 +79,7 @@ const RANDOM_ANIME_QUOTES = "https://animechan.vercel.app/api/random";
 //////////////////////////////////
 // Persisted config
 //////////////////////////////////
-const persistedConfig = new Conf({ projectName: "robinhood-cli" });
+const persistedConfig = new Conf({ projectName: "vt100-cli" });
 const getAuthToken = (email) => {
     return persistedConfig.get(`tokens.${email}`);
 };
@@ -308,7 +308,7 @@ const catchAllBrokerDeathWrapper = (commanderAction) => async (...args) => {
         return await commanderAction(args);
     }
     catch (error) {
-        logger.error("Broker is possibly dead. Contact the monkees that built Robinhood");
+        logger.error("Broker is possibly dead. Contact the monkees that built vt100");
         process.exit(1);
     }
 };
@@ -852,7 +852,7 @@ const listRooms = async () => {
     }
     const roomsMeta = (await response.json()).metrics;
     if (!roomsMeta.length) {
-        logger.error("No resources available ...onboard someone to Robinhood :P");
+        logger.error("No resources available ...onboard someone to vt100 :P");
         process.exit(1);
     }
     return roomsMeta;
@@ -1355,7 +1355,7 @@ const BrokerActions = {
 const program = new Command();
 program
     .name("rh")
-    .description("Share your resources through Robinhood")
+    .description("Share your resources through vt100")
     .version("0.1.0");
 ///////////////////////
 // Auth commands // NOT IMPLEMENTED
@@ -1411,7 +1411,7 @@ const init = async () => {
     const q = await fetch(RANDOM_ANIME_QUOTES).then((r) => r.json());
     Spinner.stop();
     console.log(boxen("\n" +
-        bold(yellow(figlet.textSync("Robinhood", {
+        bold(yellow(figlet.textSync("vt100", {
             font: "Colossal",
             horizontalLayout: "default",
             verticalLayout: "default",

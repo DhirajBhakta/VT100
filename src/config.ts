@@ -3,7 +3,7 @@ import Conf from "conf";
 import dotenv from "dotenv";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ping } from "../utils/async.js";
+import { ping } from "./utils/async.js";
 dotenv.config();
 
 //////////////////////////////////
@@ -19,18 +19,18 @@ const pwd = dirname(fileURLToPath(import.meta.url));
 
 export const DAEMON_CONFIG = {
   master: {
-    name: "rh-master",
+    name: "vt-master",
     absolutePathToScript: `${pwd}/scripts/master.js`,
     // absolutePathToScript: `${pwd}/scripts/master.js`,
   },
   metrics: {
-    name: "rh-metrics",
+    name: "vt-metrics",
     absolutePathToScript: `${pwd}/scripts/metrics.js`,
     // absolutePathToScript: `${pwd}/scripts/metrics.js`,
   },
 };
 
-export const CONTAINER_PREFIX = "rh_container";
+export const CONTAINER_PREFIX = "vt__";
 
 export const SUPPORTED_IMAGES = ["ubuntu", "debian", "fedora"];
 
@@ -50,7 +50,7 @@ export const RANDOM_ANIME_QUOTES = "https://animechan.vercel.app/api/random";
 
 // Persisted config
 //////////////////////////////////
-const persistedConfig = new Conf({ projectName: "robinhood-cli" });
+const persistedConfig = new Conf({ projectName: "vt100-cli" });
 
 // Auth
 export const setAuthToken = (email: string, token: string): void => {

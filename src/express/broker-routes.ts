@@ -1,6 +1,6 @@
 import { Metric, MetricRequest } from "@types";
 import express from "express";
-import logger from "../../utils/log.js";
+import logger from "../utils/log.js";
 import { metricStore } from "../config.js";
 const router = express.Router();
 

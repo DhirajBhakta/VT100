@@ -13,7 +13,7 @@ const resolveBinaryPlugin = () => ({
 });
 
 export default {
-	input: 'src/rh/index.ts',
+	input: 'src/index.ts',
 	output: {
 		file: '.bin/index.js',
 		format: 'es'

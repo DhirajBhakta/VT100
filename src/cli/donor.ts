@@ -13,8 +13,8 @@ import {
   IS_SIGNALING_SERVER_UP,
   setDonorPreferences,
 } from "../config.js";
-import pm2 from "../../utils/daemon.js";
-import logger from "../../utils/log.js";
+import pm2 from "../utils/daemon.js";
+import logger from "../utils/log.js";
 import _fetch from "isomorphic-fetch";
 export const initializeDaemonsAndDetach = async (
   maxCpu: string,
@@ -25,7 +25,7 @@ export const initializeDaemonsAndDetach = async (
   await _fetch(IS_SIGNALING_SERVER_UP, {method:'HEAD'});
   if (await isAnyDaemonRunning()) {
     logger.error(
-      "Daemon already running. Please kill existing daemon using `rh kill` command."
+      "Daemon already running. Please kill existing daemon using `vt kill` command."
     );
     process.exit(1);
   }

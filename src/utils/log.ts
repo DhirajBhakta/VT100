@@ -40,7 +40,7 @@ export const catchAllBrokerDeathWrapper =
       return await commanderAction(args);
     } catch (error) {
       logger.error(
-        "Broker is possibly dead. Contact the monkees that built Robinhood"
+        "Broker is possibly dead. Contact the monkees that built vt100"
       );
       process.exit(1);
     }

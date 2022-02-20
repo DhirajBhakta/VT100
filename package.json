@@ -1,11 +1,11 @@
 {
-    "name": "robinhood-cli",
+    "name": "vt100",
     "version": "1.0.0",
-    "description": "terminal sharing from wherever, whenever",
+    "description": "Share your PC resources",
     "main": "./.bin/index.js",
     "type":"module",
     "bin": {
-        "rh": "./.bin/index.js"
+        "vt": "./.bin/index.js"
     },
     "scripts": {
         "clean": "rm -rf .bin",
@@ -16,7 +16,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/gandha9394/robinhood.git"
+        "url": "git+https://github.com/dhirajbhakta/vt100.git"
     },
     "keywords": [
         "ssh",
@@ -28,9 +28,9 @@
     "author": "Dhiraj Bhakta",
     "license": "MIT",
     "bugs": {
-        "url": "https://github.com/gandha9394/robinhood/issues"
+        "url": "https://github.com/dhirajbhakta/vt100/issues"
     },
-    "homepage": "https://github.com/gandha9394/robinhood#readme",
+    "homepage": "https://github.com/dhirajbhakta/vt100#readme",
     "dependencies": {
         "@rollup/plugin-commonjs": "^21.0.1",
         "@rollup/plugin-typescript": "^8.3.0",

@@ -1,7 +1,7 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import figlet from "figlet";
 import { bold, magentaBright, yellow, blackBright } from "colorette";
-import { loginUser } from "../utils/auth.js";
+import { loginUser } from "./utils/auth.js";
 import { DonorActions } from "./cli/donor.js";
 import { DoneeActions } from "./cli/donee.js";
 import { BrokerActions } from "./cli/broker.js";
@@ -9,12 +9,12 @@ import fetch from "isomorphic-fetch";
 
 import { RANDOM_ANIME_QUOTES } from "./config.js";
 import { andThen, pipe } from "ramda";
-import { catchAllBrokerDeathWrapper, Spinner } from "../utils/log.js";
+import { catchAllBrokerDeathWrapper, Spinner } from "./utils/log.js";
 const program = new Command();
 
 program
-  .name("rh")
-  .description("Share your resources through Robinhood")
+  .name("vt")
+  .description("Share your resources through vt100")
   .version("0.1.0");
 
 ///////////////////////
@@ -23,7 +23,7 @@ program
 program
   .command("login")
   .argument("<email>", "Email of the user")
-  .description("Login to rh")
+  .description("Login to vt100")
   .action(loginUser);
 
 ///////////////////////
@@ -34,7 +34,7 @@ program
   .option("--max-cpu <percent>", "Max CPU % to allocate")
   .option("--max-memory <percent>", "Max Memory % to allocate")
   .option("--max-disk <size>", "Max disk space to allocate")
-  .description("Initialize rh daemon")
+  .description("Initialize vt100 daemon")
   .action(async (options: any, _: any) => {
     catchAllBrokerDeathWrapper(async () =>
       DonorActions.init(options.maxCpu, options.maxMemory, options.maxDisk)
@@ -43,7 +43,7 @@ program
 
 program
   .command("kill")
-  .description("Kill rh daemon")
+  .description("Kill vt100 daemon")
   .action(catchAllBrokerDeathWrapper(DonorActions.kill as any));
 
 ///////////////////////
@@ -68,7 +68,7 @@ program
 program
   .command("init-broker", { hidden: true })
   .addOption(
-    new Option("-p,--port <port>", "Port to start the signalling server")
+    new Option("-p,--port <port>", "Port to start the signaling server")
       .default("8080")
       .argParser<number>(parsePort)
   )
@@ -100,7 +100,7 @@ const init = async () => {
       "\n" +
         bold(
           yellow(
-            figlet.textSync("Robinhood", {
+            figlet.textSync("vt100", {
               font: "Colossal",
               horizontalLayout: "default",
               verticalLayout: "default",
