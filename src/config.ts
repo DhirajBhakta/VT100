@@ -36,9 +36,7 @@ export const SUPPORTED_IMAGES = ["ubuntu", "debian", "fedora"];
 
 // export const CENTRAL_SERVER = process.env.CENTRAL_SERVER || "34.133.251.43:8080"
 export const CENTRAL_SERVER =
-  process.env.CENTRAL_SERVER || ping()
-    ? "localhost:8080"
-    : "34.133.251.43:8080";
+  process.env.CENTRAL_SERVER || "localhost:8080"
 export const SIGNALING_SERVER = `ws://${CENTRAL_SERVER}`;
 // endpoints on signalingserver
 export const IS_SIGNALING_SERVER_UP = `http://${CENTRAL_SERVER}/metrics/available`;

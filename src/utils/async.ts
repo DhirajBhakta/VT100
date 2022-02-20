@@ -23,7 +23,7 @@ export function promisifyNullary(
 
 export function ping(host='localhost',port=8080){
   try{
-    connect(port, host);
+    const sock = connect(port, host);
     return true
   }catch{
     return false;

@@ -1,48 +1,26 @@
 #!/usr/bin/env node
 import { Command, Option, InvalidArgumentError } from 'commander';
 import figlet from 'figlet';
-import { green, bold, red, magenta, magentaBright, yellow, blackBright } from 'colorette';
+import { green, bold, red, magenta, yellow } from 'colorette';
 import Conf from 'conf';
 import dotenv from 'dotenv';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { connect as connect$2 } from 'net';
 import inquirer from 'inquirer';
 import { pipe, either, andThen } from 'ramda';
 import { promisify } from 'node:util';
 import pkg from 'pm2';
 import { createLogger, format, transports } from 'winston';
 import ora from 'ora';
+import 'net';
 import fetch from 'isomorphic-fetch';
-import readline from 'readline';
-import require$$0, { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { createRequire } from 'module';
+import 'child_process';
+import 'node-pty';
+import readline from 'readline';
 import express from 'express';
 import http from 'http';
-
-/**
- *This is a  drop-in replacement of the utils.promisify from the
- * standard `utils` package which works for all functions that have N-arity
- * except for nullaries :/
- * @param functionThatTakesCallback
- * @returns functionThatGivesAPromise
- */
-function promisifyNullary(functionThatTakesCallback) {
-    return function () {
-        return new Promise((res, rej) => {
-            functionThatTakesCallback(rej);
-        });
-    };
-}
-function ping(host = 'localhost', port = 8080) {
-    try {
-        connect$2(port, host);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
 
 dotenv.config();
 //////////////////////////////////
@@ -55,27 +33,24 @@ process.env.DEFAULT_DAEMON_PORT || "8080";
 const pwd = dirname(fileURLToPath(import.meta.url));
 const DAEMON_CONFIG = {
     master: {
-        name: "rh-master",
+        name: "vt-master",
         absolutePathToScript: `${pwd}/scripts/master.js`,
         // absolutePathToScript: `${pwd}/scripts/master.js`,
     },
     metrics: {
-        name: "rh-metrics",
+        name: "vt-metrics",
         absolutePathToScript: `${pwd}/scripts/metrics.js`,
         // absolutePathToScript: `${pwd}/scripts/metrics.js`,
     },
 };
 const SUPPORTED_IMAGES = ["ubuntu", "debian", "fedora"];
 // export const CENTRAL_SERVER = process.env.CENTRAL_SERVER || "34.133.251.43:8080"
-const CENTRAL_SERVER = process.env.CENTRAL_SERVER || ping()
-    ? "localhost:8080"
-    : "34.133.251.43:8080";
+const CENTRAL_SERVER = process.env.CENTRAL_SERVER || "localhost:8080";
 const SIGNALING_SERVER = `ws://${CENTRAL_SERVER}`;
 // endpoints on signalingserver
 const IS_SIGNALING_SERVER_UP = `http://${CENTRAL_SERVER}/metrics/available`;
 const LIST_DONORS_ENDPOINT = `http://${CENTRAL_SERVER}/metrics/available`;
 const DONOR_HEARTBEAT_ENDPOINT = (roomName) => `http://${CENTRAL_SERVER}/metrics/${roomName}`;
-const RANDOM_ANIME_QUOTES = "https://animechan.vercel.app/api/random";
 //////////////////////////////////
 // Persisted config
 //////////////////////////////////
@@ -293,16 +268,6 @@ const logger = createLogger({
         new transports.File({ filename: "combined.log" }),
     ],
 });
-// export const devLogger = createLogger({
-//   level: "silly",
-//   silent: false, //set this to true later
-//   format: combine(
-//     format.errors({ stack: true }),
-//     format.colorize({ all: true }),
-//     logFormat
-//   ),
-//   transports: [new transports.Console()],
-// });
 const catchAllBrokerDeathWrapper = (commanderAction) => async (...args) => {
     try {
         return await commanderAction(args);
@@ -316,6 +281,21 @@ const catchAllBrokerDeathWrapper = (commanderAction) => async (...args) => {
 //PR: https://github.com/sindresorhus/ora/pull/112
 //ISSUE: https://github.com/sindresorhus/ora/issues/97
 const Spinner = ora({ discardStdin: false });
+
+/**
+ *This is a  drop-in replacement of the utils.promisify from the
+ * standard `utils` package which works for all functions that have N-arity
+ * except for nullaries :/
+ * @param functionThatTakesCallback
+ * @returns functionThatGivesAPromise
+ */
+function promisifyNullary(functionThatTakesCallback) {
+    return function () {
+        return new Promise((res, rej) => {
+            functionThatTakesCallback(rej);
+        });
+    };
+}
 
 const { killDaemon: k, connect: c, disconnect: dc, start: s, restart: r, stop: st, delete: d, list: l, } = pkg;
 const [killDaemon, connect$1, disconnect, start, restart, stop, deleteP, list] = [
@@ -372,7 +352,7 @@ const initializeDaemonsAndDetach = async (maxCpu, maxMemory, maxDisk) => {
     ////////statping signaling server ////////////////////
     await fetch(IS_SIGNALING_SERVER_UP, { method: 'HEAD' });
     if (await isAnyDaemonRunning()) {
-        logger.error("Daemon already running. Please kill existing daemon using `rh kill` command.");
+        logger.error("Daemon already running. Please kill existing daemon using `vt kill` command.");
         process.exit(1);
     }
     try {
@@ -469,10 +449,16 @@ const clearANSIFormatting = (str) => {
 class PseudoTerminal {
     history = [];
     rl;
+    onExitCallback;
     constructor() {
         this.rl = readline.createInterface({
             input: process.stdin,
         });
+        this.print = this.print.bind(this);
+    }
+    onExit(cb) {
+        process.on("SIGINT", cb);
+        this.onExitCallback = cb;
     }
     onType(onInput) {
         this.rl.on("line", (line) => {
@@ -486,11 +472,14 @@ class PseudoTerminal {
     }
     print(result) {
         process.stdout.write(result.data);
+        if (clearANSIFormatting(result.data).trim() === "exit") {
+            this.onExitCallback && this.onExitCallback();
+        }
     }
 }
 
 const require = createRequire(import.meta.url);
-const { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } = require('wrtc');
+const { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, } = require("wrtc");
 const defaultConfig = {
     signalingServer: "ws://localhost:8080",
     iceServer: "stun:stun.l.google.com:19302",
@@ -803,9 +792,12 @@ class RTCPeer extends Peer {
     }
 }
 class RTCDoneePeer extends RTCPeer {
+    terminal;
     constructor(config) {
+        Spinner.start(`Connecting to ${config.roomName}...`);
         super(config);
         this._["isDonor"] = false;
+        this.terminal = new PseudoTerminal();
         this.on("receive_offer", async (data) => {
             await this.receiveOffer(data.socketId, data.sdp);
             const answer = await this.peerHandle?.peerConnection.createAnswer();
@@ -825,6 +817,38 @@ class RTCDoneePeer extends RTCPeer {
             }
             else {
                 logger.silly(`Ignore this event. connections=0. connections=${data.connections.length}`);
+            }
+        });
+        this.terminal.onType((cmd) => {
+            //TODO:check if datachannel is ready
+            logger.error(cmd);
+            this.send(JSON.stringify(cmd));
+        });
+        this.terminal.onExit(this.disconnect.bind(this));
+        this.onmessage = (message) => {
+            logger.error(message);
+            const commandResult = JSON.parse(message);
+            this.terminal.print(commandResult);
+        };
+        this.on("connection_established", () => {
+            this.send(JSON.stringify({
+                type: "CREATE_CONTAINER",
+                data: config.image,
+            }));
+            Spinner.succeed(Spinner.text);
+        });
+    }
+    disconnect() {
+        console.log("\n\nAre you sure? Your connection will be terminated. (y/Y)");
+        process.stdin.addListener("data", (d) => {
+            const response = d.toString().trim();
+            if (response === "y" || response === "Y") {
+                this.send(JSON.stringify({
+                    type: "CMD",
+                    data: "exit\n",
+                }));
+                process.stdin.removeAllListeners();
+                process.exit(1);
             }
         });
     }
@@ -885,7 +909,7 @@ const checkRoomAvailability = async (roomName) => {
     const response = await fetch(DONOR_HEARTBEAT_ENDPOINT(roomName));
     Spinner.stop();
     if (response.status !== 200) {
-        console.log(red("Donor not available. Try checking for avaiable donors using `rh list`."));
+        console.log(red("Donor not available. Try checking for avaiable donors using `vt list`."));
         process.exit(1);
     }
     return roomName;
@@ -911,62 +935,13 @@ const obtainImageName = async (roomName) => {
     }
 };
 const connect = async (roomName, image) => {
-    Spinner.start(`Connecting to '${roomName}'...`);
-    const peer = new RTCDoneePeer({
+    //constructor does all the job
+    new RTCDoneePeer({
         roomName: roomName,
+        image: image,
         signalingServer: SIGNALING_SERVER,
     });
-    const ptyTerminal = new PseudoTerminal();
-    peer.on("connection_established", () => {
-        Spinner.succeed(Spinner.text);
-        ptyTerminal.print({
-            type: "RSLT",
-            data: "Connected to peer! \n\n",
-        });
-        ////Observe how we set callbacks everytime `connection_established` gets fired///
-        ptyTerminal.onType((command) => {
-            return peer.send(JSON.stringify({ eventName: "command", data: command }));
-        });
-        peer.onmessage = (commandResult) => {
-            const commandResultJSON = JSON.parse(commandResult);
-            ptyTerminal.print(commandResultJSON);
-            if (clearANSIFormatting(commandResultJSON.data).trim() == "exit") {
-                terminateProcess(peer);
-            }
-        };
-        ////Observe how we set callbacks everytime `connection_established` gets fired///
-        process.on("SIGINT", () => confirmBeforeTerminate(peer));
-        //////Immediately send container creation command////////////////////////////////
-        peer.send(JSON.stringify({
-            eventName: "create_container",
-            data: { image: image },
-        }));
-    });
-    await new Promise((res) => {
-        setTimeout(res, 1000 * 123);
-    });
-};
-const confirmBeforeTerminate = async (peer) => {
-    console.log("\n\nAre you sure? Your connection will be terminated. (y/Y)");
-    var stdin = process.openStdin();
-    stdin.addListener("data", (d) => {
-        const response = d.toString().trim();
-        if (response === "y" || response === "Y") {
-            terminateProcess(peer);
-        }
-    });
-};
-const terminateProcess = (peer) => {
-    peer.send(JSON.stringify({
-        eventName: "command",
-        data: {
-            type: "CMD",
-            data: "exit\n",
-        },
-    }));
-    const stdin = process.openStdin();
-    stdin.removeAllListeners();
-    process.exit(1);
+    return new Promise(res => setTimeout(res, 1000 * 128));
 };
 const DoneeActions = {
     listRooms,
@@ -975,279 +950,6 @@ const DoneeActions = {
     obtainImageName,
     connect,
 };
-
-var webrtc_io$1 = {};
-
-//SERVER
-var WebSocketServer = require$$0.Server;
-
-var iolog = function() {};
-
-for (var i = 0; i < process.argv.length; i++) {
-  var arg = process.argv[i];
-  if (arg === "-debug") {
-    iolog = function(msg) {
-      console.log(msg);
-    };
-    console.log('Debug mode on!');
-  }
-}
-
-
-// Used for callback publish and subscribe
-if (typeof rtc === "undefined") {
-  var rtc = {};
-}
-//Array to store connections
-rtc.sockets = [];
-
-rtc.rooms = {};
-
-// Holds callbacks for certain events.
-rtc._events = {};
-
-rtc.on = function(eventName, callback) {
-  rtc._events[eventName] = rtc._events[eventName] || [];
-  rtc._events[eventName].push(callback);
-};
-
-rtc.fire = function(eventName, _) {
-  var events = rtc._events[eventName];
-  var args = Array.prototype.slice.call(arguments, 1);
-
-  if (!events) {
-    return;
-  }
-
-  for (var i = 0, len = events.length; i < len; i++) {
-    events[i].apply(null, args);
-  }
-};
-
-webrtc_io$1.listen = function(server) {
-  var manager;
-  if (typeof server === 'number') { 
-    manager = new WebSocketServer({
-        port: server
-      });
-  } else {
-    manager = new WebSocketServer({
-      server: server
-    });
-  }
-
-  manager.rtc = rtc;
-  attachEvents(manager);
-  return manager;
-};
-
-function attachEvents(manager) {
-
-  manager.on('connection', function(socket) {
-    iolog('connect');
-
-    socket.id = id();
-    iolog('new socket got id: ' + socket.id);
-
-    rtc.sockets.push(socket);
-
-    socket.on('message', function(msg) {
-      var json = JSON.parse(msg);
-      rtc.fire(json.eventName, json.data, socket);
-    });
-
-    socket.on('close', function() {
-      iolog('close');
-
-      // find socket to remove
-      var i = rtc.sockets.indexOf(socket);
-      // remove socket
-      rtc.sockets.splice(i, 1);
-
-      // remove from rooms and send remove_peer_connected to all sockets in room
-      var room;
-      for (var key in rtc.rooms) {
-
-        room = rtc.rooms[key];
-        var exist = room.indexOf(socket.id);
-
-        if (exist !== -1) {
-          room.splice(room.indexOf(socket.id), 1);
-          for (var j = 0; j < room.length; j++) {
-            console.log(room[j]);
-            var soc = rtc.getSocket(room[j]);
-            soc.send(JSON.stringify({
-              "eventName": "remove_peer_connected",
-              "data": {
-                "socketId": socket.id
-              }
-            }), function(error) {
-              if (error) {
-                console.log(error);
-              }
-            });
-          }
-          break;
-        }
-      }
-      // we are leaved the room so lets notify about that
-      rtc.fire('room_leave', room, socket.id);
-      
-      // call the disconnect callback
-      rtc.fire('disconnect', rtc);
-
-    });
-    
-
-    // call the connect callback
-    rtc.fire('connect', rtc);
-
-  });
-
-  // manages the built-in room functionality
-  rtc.on('join_room', function(data, socket) {
-    iolog('join_room');
-
-    var connectionsId = [];
-    var roomList = rtc.rooms[data.room] || [];
-
-    roomList.push(socket.id);
-    rtc.rooms[data.room] = roomList;
-
-
-    for (var i = 0; i < roomList.length; i++) {
-      var id = roomList[i];
-
-      if (id == socket.id) {
-        continue;
-      } else {
-
-        connectionsId.push(id);
-        var soc = rtc.getSocket(id);
-
-        // inform the peers that they have a new peer
-        if (soc) {
-          soc.send(JSON.stringify({
-            "eventName": "new_peer_connected",
-            "data":{
-              "socketId": socket.id
-            }
-          }), function(error) {
-            if (error) {
-              console.log(error);
-            }
-          });
-        }
-      }
-    }
-    // send new peer a list of all prior peers
-    socket.send(JSON.stringify({
-      "eventName": "get_peers",
-      "data": {
-        "connections": connectionsId,
-        "you": socket.id
-      }
-    }), function(error) {
-      if (error) {
-        console.log(error);
-      }
-    });
-  });
-
-  //Receive ICE candidates and send to the correct socket
-  rtc.on('send_ice_candidate', function(data, socket) {
-    iolog('send_ice_candidate');
-    var soc = rtc.getSocket(data.socketId);
-
-    if (soc) {
-      soc.send(JSON.stringify({
-        "eventName": "receive_ice_candidate",
-        "data": {
-          "label": data.label,
-          "candidate": data.candidate,
-          "socketId": socket.id
-        }
-      }), function(error) {
-        if (error) {
-          console.log(error);
-        }
-      });
-
-      // call the 'recieve ICE candidate' callback
-      rtc.fire('receive ice candidate', rtc);
-    }
-  });
-
-  //Receive offer and send to correct socket
-  rtc.on('send_offer', function(data, socket) {
-    iolog('send_offer');
-    var soc = rtc.getSocket(data.socketId);
-
-    if (soc) {
-      soc.send(JSON.stringify({
-        "eventName": "receive_offer",
-        "data": {
-          "sdp": data.sdp,
-          "socketId": socket.id
-      }
-      }), function(error) {
-        if (error) {
-          console.log(error);
-        }
-      });
-    }
-    // call the 'send offer' callback
-    rtc.fire('send offer', rtc);
-  });
-
-  //Receive answer and send to correct socket
-  rtc.on('send_answer', function(data, socket) {
-    iolog('send_answer');
-    var soc = rtc.getSocket( data.socketId);
-
-    if (soc) {
-      soc.send(JSON.stringify({
-        "eventName": "receive_answer",
-        "data" : {
-          "sdp": data.sdp,
-          "socketId": socket.id
-        }
-      }), function(error) {
-        if (error) {
-          console.log(error);
-        }
-      });
-      rtc.fire('send answer', rtc);
-    }
-  });
-}
-
-// generate a 4 digit hex code randomly
-function S4() {
-  return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
-}
-
-// make a REALLY COMPLICATED AND RANDOM id, kudos to dennis
-function id() {
-  return (S4() + S4() + "-" + S4() + "-" + S4() + "-" + S4() + "-" + S4() + S4() + S4());
-}
-
-rtc.getSocket = function(id) {
-  var connections = rtc.sockets;
-  if (!connections) {
-    // TODO: Or error, or customize
-    return;
-  }
-
-  for (var i = 0; i < connections.length; i++) {
-    var socket = connections[i];
-    if (id === socket.id) {
-      return socket;
-    }
-  }
-};
-
-var webrtc_io = webrtc_io$1;
 
 const router = express.Router();
 router.use(express.json());
@@ -1317,10 +1019,211 @@ const DEFAULT = {
     PORT: 8080,
     JSON_INDENTATION: 40,
 };
+const rtc = {
+    sockets: [],
+    rooms: {},
+    _events: {},
+    on: function (eventName, callback) {
+        rtc._events[eventName] = rtc._events[eventName] || [];
+        rtc._events[eventName].push(callback);
+    },
+    fire: function (eventName, _) {
+        var events = rtc._events[eventName];
+        var args = Array.prototype.slice.call(arguments, 1);
+        if (!events) {
+            return;
+        }
+        for (var i = 0, len = events.length; i < len; i++) {
+            events[i].apply(null, args);
+        }
+    },
+};
+const Listen = function (server) {
+    const manager = new WebSocketServer({
+        server: server,
+    });
+    manager.rtc = rtc;
+    manager.on("connection", function (socket) {
+        socket.id = id();
+        rtc.sockets.push(socket);
+        socket.on("message", function (msg) {
+            var json = JSON.parse(msg);
+            rtc.fire(json.eventName, json.data, socket);
+        });
+        socket.on("close", function () {
+            // find socket to remove
+            var i = rtc.sockets.indexOf(socket);
+            // remove socket
+            rtc.sockets.splice(i, 1);
+            // remove from rooms and send remove_peer_connected to all sockets in room
+            var room;
+            for (var key in rtc.rooms) {
+                room = rtc.rooms[key];
+                var exist = room.indexOf(socket.id);
+                if (exist !== -1) {
+                    room.splice(room.indexOf(socket.id), 1);
+                    for (var j = 0; j < room.length; j++) {
+                        console.log(room[j]);
+                        var soc = rtc.getSocket(room[j]);
+                        soc.send(JSON.stringify({
+                            eventName: "remove_peer_connected",
+                            data: {
+                                socketId: socket.id,
+                            },
+                        }), function (error) {
+                            if (error) {
+                                console.log(error);
+                            }
+                        });
+                    }
+                    break;
+                }
+            }
+            // we are leaved the room so lets notify about that
+            rtc.fire("room_leave", room, socket.id);
+            // call the disconnect callback
+            rtc.fire("disconnect", rtc);
+        });
+        // call the connect callback
+        rtc.fire("connect", rtc);
+    });
+    // manages the built-in room functionality
+    rtc.on("join_room", function (data, socket) {
+        var connectionsId = [];
+        var roomList = rtc.rooms[data.room] || [];
+        roomList.push(socket.id);
+        rtc.rooms[data.room] = roomList;
+        for (var i = 0; i < roomList.length; i++) {
+            var id = roomList[i];
+            if (id == socket.id) {
+                continue;
+            }
+            else {
+                connectionsId.push(id);
+                var soc = rtc.getSocket(id);
+                // inform the peers that they have a new peer
+                if (soc) {
+                    soc.send(JSON.stringify({
+                        eventName: "new_peer_connected",
+                        data: {
+                            socketId: socket.id,
+                        },
+                    }), function (error) {
+                        if (error) {
+                            console.log(error);
+                        }
+                    });
+                }
+            }
+        }
+        // send new peer a list of all prior peers
+        socket.send(JSON.stringify({
+            eventName: "get_peers",
+            data: {
+                connections: connectionsId,
+                you: socket.id,
+            },
+        }), function (error) {
+            if (error) {
+                console.log(error);
+            }
+        });
+    });
+    //Receive ICE candidates and send to the correct socket
+    rtc.on("send_ice_candidate", function (data, socket) {
+        var soc = rtc.getSocket(data.socketId);
+        if (soc) {
+            soc.send(JSON.stringify({
+                eventName: "receive_ice_candidate",
+                data: {
+                    label: data.label,
+                    candidate: data.candidate,
+                    socketId: socket.id,
+                },
+            }), function (error) {
+                if (error) {
+                    console.log(error);
+                }
+            });
+            // call the 'recieve ICE candidate' callback
+            rtc.fire("receive ice candidate", rtc);
+        }
+    });
+    //Receive offer and send to correct socket
+    rtc.on("send_offer", function (data, socket) {
+        var soc = rtc.getSocket(data.socketId);
+        if (soc) {
+            soc.send(JSON.stringify({
+                eventName: "receive_offer",
+                data: {
+                    sdp: data.sdp,
+                    socketId: socket.id,
+                },
+            }), function (error) {
+                if (error) {
+                    console.log(error);
+                }
+            });
+        }
+        // call the 'send offer' callback
+        rtc.fire("send offer", rtc);
+    });
+    //Receive answer and send to correct socket
+    rtc.on("send_answer", function (data, socket) {
+        var soc = rtc.getSocket(data.socketId);
+        if (soc) {
+            soc.send(JSON.stringify({
+                eventName: "receive_answer",
+                data: {
+                    sdp: data.sdp,
+                    socketId: socket.id,
+                },
+            }), function (error) {
+                if (error) {
+                    console.log(error);
+                }
+            });
+            rtc.fire("send answer", rtc);
+        }
+    });
+    // generate a 4 digit hex code randomly
+    function S4() {
+        return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
+    }
+    // make a REALLY COMPLICATED AND RANDOM id, kudos to dennis
+    function id() {
+        return (S4() +
+            S4() +
+            "-" +
+            S4() +
+            "-" +
+            S4() +
+            "-" +
+            S4() +
+            "-" +
+            S4() +
+            S4() +
+            S4());
+    }
+    rtc.getSocket = function (id) {
+        var connections = rtc.sockets;
+        if (!connections) {
+            // TODO: Or error, or customize
+            return;
+        }
+        for (var i = 0; i < connections.length; i++) {
+            var socket = connections[i];
+            if (id === socket.id) {
+                return socket;
+            }
+        }
+    };
+    return manager;
+};
 function startServer(port = DEFAULT.PORT) {
     const expressApp = express();
     const httpServer = http.createServer(expressApp);
-    webrtc_io.listen(httpServer);
+    Listen(httpServer);
     expressApp.set("json spaces", DEFAULT.JSON_INDENTATION);
     /**----- specify all exposed REST endpoints here------- */
     expressApp.get("/hello", (req, res) => {
@@ -1349,12 +1252,12 @@ function startServer(port = DEFAULT.PORT) {
     httpServer.listen(port);
 }
 const BrokerActions = {
-    startServer
+    startServer,
 };
 
 const program = new Command();
 program
-    .name("rh")
+    .name("vt")
     .description("Share your resources through vt100")
     .version("0.1.0");
 ///////////////////////
@@ -1363,7 +1266,7 @@ program
 program
     .command("login")
     .argument("<email>", "Email of the user")
-    .description("Login to rh")
+    .description("Login to vt100")
     .action(loginUser);
 ///////////////////////
 // Donor Commands
@@ -1373,13 +1276,13 @@ program
     .option("--max-cpu <percent>", "Max CPU % to allocate")
     .option("--max-memory <percent>", "Max Memory % to allocate")
     .option("--max-disk <size>", "Max disk space to allocate")
-    .description("Initialize rh daemon")
+    .description("Initialize vt100 daemon")
     .action(async (options, _) => {
     catchAllBrokerDeathWrapper(async () => DonorActions.init(options.maxCpu, options.maxMemory, options.maxDisk))(options.maxCpu, options.maxMemory, options.maxDisk);
 });
 program
     .command("kill")
-    .description("Kill rh daemon")
+    .description("Kill vt100 daemon")
     .action(catchAllBrokerDeathWrapper(DonorActions.kill));
 ///////////////////////
 // Consumer commands
@@ -1390,7 +1293,7 @@ program
     .action(catchAllBrokerDeathWrapper(() => pipe(DoneeActions.listRooms, andThen(DoneeActions.chooseFromAvailableRooms), andThen(DoneeActions.checkRoomAvailability), andThen(DoneeActions.obtainImageName))().then(([roomName, image]) => DoneeActions.connect(roomName, image))));
 program
     .command("init-broker", { hidden: true })
-    .addOption(new Option("-p,--port <port>", "Port to start the signalling server")
+    .addOption(new Option("-p,--port <port>", "Port to start the signaling server")
     .default("8080")
     .argParser(parsePort))
     .description("Start the WebRTC signaling server")
@@ -1406,25 +1309,27 @@ function parsePort(port, _) {
     return parsedPort;
 }
 const init = async () => {
-    const { default: boxen } = await import('boxen');
-    Spinner.start(magentaBright("...Initializing"));
-    const q = await fetch(RANDOM_ANIME_QUOTES).then((r) => r.json());
-    Spinner.stop();
-    console.log(boxen("\n" +
-        bold(yellow(figlet.textSync("vt100", {
-            font: "Colossal",
-            horizontalLayout: "default",
-            verticalLayout: "default",
-            whitespaceBreak: true,
-            width: 200,
-        }))), {
-        borderStyle: "round",
-        float: "center",
-        title: "Resources for everyone...",
-        titleAlignment: "center",
-    }));
-    console.log(boxen(bold(blackBright(q.quote)) +
-        `                                                       -${q.character}(${q.anime})`, { float: "center", width: 78 }) + "\n\n");
+    // const { default: boxen } = await import("boxen");
+    // Spinner.start(magentaBright("...Initializing"));
+    // const q = await fetch(RANDOM_ANIME_QUOTES).then((r) => r.json());
+    // Spinner.stop();
+    console.log(
+    // boxen(
+    // "\n" +
+    bold(yellow(figlet.textSync("vt100", {
+        font: "Digital",
+        horizontalLayout: "default",
+        verticalLayout: "default",
+        whitespaceBreak: true,
+        width: 200,
+    }))));
+    // console.log(
+    //   boxen(
+    //     bold(blackBright(q.quote)) +
+    //       `                                                       -${q.character}(${q.anime})`,
+    //     { float: "center", width: 78 }
+    //   ) + "\n\n"
+    // );
     program.parse();
 };
 init();

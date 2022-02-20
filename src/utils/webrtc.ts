@@ -1,9 +1,15 @@
 import { pipe } from "ramda";
-import { WebSocket, ErrorEvent } from "ws";
+import { WebSocket, ErrorEvent, WebSocketServer } from "ws";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-const { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate }: any = require('wrtc')
-import logger from "./log.js";
+const {
+  RTCPeerConnection,
+  RTCSessionDescription,
+  RTCIceCandidate,
+}: any = require("wrtc");
+import logger, { Spinner } from "./log.js";
+import { PseudoTerminal, Terminal } from "./pty.js";
+import { CONTAINER_PREFIX } from "../config.js";
 
 /**--------CONFIG & SETUP--------------------- */
 type RTCDataChannel = any;
@@ -18,6 +24,7 @@ type StrictConfig = {
   roomName: string;
   trickle: boolean;
   isDonor: boolean;
+  image: string;
 };
 type Config = Partial<StrictConfig>;
 type PeerHandle = {
@@ -388,7 +395,6 @@ class RTCPeer extends Peer {
   }
   dataChannelOnMessage(dataChannel: RTCDataChannel) {
     dataChannel.onmessage = ({ data }) => {
-
       logger.info(`DataChannel recv msg:${data}`);
       if (data) this.fire("recv", data);
     };
@@ -412,9 +418,13 @@ class RTCPeer extends Peer {
 
 export class RTCDonorPeer extends RTCPeer {
   count: number = 0;
+  terminal: Terminal;
   constructor(config: Config) {
     super(config);
     this._["isDonor"] = true;
+    this.terminal = new Terminal({
+      name: CONTAINER_PREFIX+config.roomName,
+    });
     this.on("new_peer_connected", async (data: any) => {
       this.peerHandle = this.createPeerHandle(data.socketId);
       this.peerHandle.dataChannel = this.createDataChannel(data.socketId);
@@ -424,6 +434,16 @@ export class RTCDonorPeer extends RTCPeer {
     });
     this.on("receive_answer", async (data: any) => {
       this.receiveAnswer(data.socketId, data.sdp);
+    });
+    this.onmessage = (message) => {
+      const command = JSON.parse(message);
+      this.terminal.write(command);
+    };
+    this.terminal.onoutput = (commandResult) => {
+      this.send(JSON.stringify(commandResult));
+    };
+    this.on("connection_established", () => {
+      logger.info("Peer connected!, connection established!,");
     });
     this.receiveAnswer = this.receiveAnswer.bind(this);
   }
@@ -446,9 +466,12 @@ export class RTCDonorPeer extends RTCPeer {
   }
 }
 export class RTCDoneePeer extends RTCPeer {
+  terminal: PseudoTerminal;
   constructor(config: Config) {
+    Spinner.start(`Connecting to ${config.roomName}...`);
     super(config);
     this._["isDonor"] = false;
+    this.terminal = new PseudoTerminal();
     this.on("receive_offer", async (data: any) => {
       await this.receiveOffer(data.socketId, data.sdp);
       const answer = await this.peerHandle?.peerConnection.createAnswer();
@@ -472,6 +495,40 @@ export class RTCDoneePeer extends RTCPeer {
         logger.silly(
           `Ignore this event. connections=0. connections=${data.connections.length}`
         );
+      }
+    });
+    this.terminal.onType((cmd) => {
+      //TODO:check if datachannel is ready
+      this.send(JSON.stringify(cmd));
+    });
+    this.terminal.onExit(this.disconnect.bind(this));
+    this.onmessage = (message: string) => {
+      const commandResult = JSON.parse(message);
+      this.terminal.print(commandResult);
+    };
+    this.on("connection_established", () => {
+      this.send(
+        JSON.stringify({
+          type: "CREATE_CONTAINER",
+          data: config.image,
+        })
+      );
+      Spinner.succeed(Spinner.text);
+    });
+  }
+  disconnect() {
+    console.log("\n\nAre you sure? Your connection will be terminated. (y/Y)");
+    process.stdin.addListener("data", (d) => {
+      const response = d.toString().trim();
+      if (response === "y" || response === "Y") {
+        this.send(
+          JSON.stringify({
+            type: "CMD",
+            data: "exit\n",
+          })
+        );
+        process.stdin.removeAllListeners();
+        process.exit(1);
       }
     });
   }

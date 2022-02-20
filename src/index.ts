@@ -91,17 +91,17 @@ function parsePort(port: string, _: number): number {
 }
 
 const init = async () => {
-  const { default: boxen } = await import("boxen");
-  Spinner.start(magentaBright("...Initializing"));
-  const q = await fetch(RANDOM_ANIME_QUOTES).then((r) => r.json());
-  Spinner.stop();
+  // const { default: boxen } = await import("boxen");
+  // Spinner.start(magentaBright("...Initializing"));
+  // const q = await fetch(RANDOM_ANIME_QUOTES).then((r) => r.json());
+  // Spinner.stop();
   console.log(
-    boxen(
-      "\n" +
+    // boxen(
+      // "\n" +
         bold(
           yellow(
             figlet.textSync("vt100", {
-              font: "Colossal",
+              font: "Digital",
               horizontalLayout: "default",
               verticalLayout: "default",
               whitespaceBreak: true,
@@ -109,21 +109,21 @@ const init = async () => {
             })
           )
         ),
-      {
-        borderStyle: "round",
-        float: "center",
-        title: "Resources for everyone...",
-        titleAlignment: "center",
-      }
-    )
+      // {
+      //   borderStyle: "round",
+      //   float: "center",
+      //   title: "Resources for everyone...",
+      //   titleAlignment: "center",
+      // }
+    // )
   );
-  console.log(
-    boxen(
-      bold(blackBright(q.quote)) +
-        `                                                       -${q.character}(${q.anime})`,
-      { float: "center", width: 78 }
-    ) + "\n\n"
-  );
+  // console.log(
+  //   boxen(
+  //     bold(blackBright(q.quote)) +
+  //       `                                                       -${q.character}(${q.anime})`,
+  //     { float: "center", width: 78 }
+  //   ) + "\n\n"
+  // );
   program.parse();
 };
 

@@ -97,70 +97,13 @@ const obtainImageName = async (roomName: string) => {
 };
 
 const connect = async (roomName: string, image: string) => {
-  Spinner.start(`Connecting to '${roomName}'...`);
+  //constructor does all the job
   const peer = new RTCDoneePeer({
     roomName: roomName,
+    image: image,
     signalingServer: SIGNALING_SERVER,
   });
-  const ptyTerminal = new PseudoTerminal();
-
-  peer.on("connection_established", () => {
-    Spinner.succeed(Spinner.text);
-    ptyTerminal.print({
-      type: "RSLT",
-      data: "Connected to peer! \n\n",
-    });
-    ////Observe how we set callbacks everytime `connection_established` gets fired///
-    ptyTerminal.onType((command) => {
-      return peer.send(JSON.stringify({ eventName: "command", data: command }));
-    });
-    peer.onmessage = (commandResult: string) => {
-      const commandResultJSON = JSON.parse(commandResult);
-      ptyTerminal.print(commandResultJSON);
-      if (clearANSIFormatting(commandResultJSON.data).trim() == "exit") {
-        terminateProcess(peer);
-      }
-    };
-
-    ////Observe how we set callbacks everytime `connection_established` gets fired///
-    process.on("SIGINT", () => confirmBeforeTerminate(peer));
-    //////Immediately send container creation command////////////////////////////////
-    peer.send(
-      JSON.stringify({
-        eventName: "create_container",
-        data: { image: image },
-      })
-    );
-  });
-  await new Promise((res) => {
-    setTimeout(res, 1000 * 123);
-  });
-};
-
-const confirmBeforeTerminate = async (peer: RTCDoneePeer) => {
-  console.log("\n\nAre you sure? Your connection will be terminated. (y/Y)");
-  var stdin = process.openStdin();
-  stdin.addListener("data", (d) => {
-    const response = d.toString().trim();
-    if (response === "y" || response === "Y") {
-      terminateProcess(peer);
-    }
-  });
-};
-
-const terminateProcess = (peer: RTCDoneePeer) => {
-  peer.send(
-    JSON.stringify({
-      eventName: "command",
-      data: {
-        type: "CMD",
-        data: "exit\n",
-      },
-    })
-  );
-  const stdin = process.openStdin();
-  stdin.removeAllListeners();
-  process.exit(1);
+  return new Promise(res => setTimeout(res, 1000*128))
 };
 
 export const DoneeActions = {

@@ -23,16 +23,7 @@ const logger = createLogger({
   ],
 });
 
-// export const devLogger = createLogger({
-//   level: "silly",
-//   silent: false, //set this to true later
-//   format: combine(
-//     format.errors({ stack: true }),
-//     format.colorize({ all: true }),
-//     logFormat
-//   ),
-//   transports: [new transports.Console()],
-// });
+
 export const catchAllBrokerDeathWrapper =
   (commanderAction: (...args: any[]) => Promise<void>) =>
   async (...args: any[]) => {
@@ -40,7 +31,7 @@ export const catchAllBrokerDeathWrapper =
       return await commanderAction(args);
     } catch (error) {
       logger.error(
-        "Broker is possibly dead. Contact the monkees that built vt100"
+        "Broker is possibly dead. Restart broker by issuing `vt init-broker` on a machine with public IP"
       );
       process.exit(1);
     }

@@ -1,15 +1,16 @@
-import { IPty } from "node-pty";
+import { execSync } from "child_process";
+import pty, { IPty } from "node-pty";
 import readline from "readline";
 
 interface TerminalConfig {
   ptyProcess?: IPty;
 }
 interface STDOUTdata {
-  type: "CMD" | "RSLT";
+  type: "CREATE_CONTAINER" | "CMD" | "RSLT";
   data: string;
 }
 export interface Command extends STDOUTdata {
-  type: "CMD";
+  type: "CREATE_CONTAINER" | "CMD";
 }
 export interface CommandResult extends STDOUTdata {
   type: "RSLT";
@@ -26,9 +27,14 @@ export const clearANSIFormatting = (str: string) => {
 export class Terminal {
   _pty?: IPty;
   history: Array<Command> = [];
+  name: string;
+  onoutput =  (rslt: CommandResult) => {};
+  onclose =  (ev:any) =>{}
 
-  constructor({ ptyProcess }: TerminalConfig) {
-    this._pty = ptyProcess;
+  constructor({ name }: any) {
+    this.name = name;
+    this.sanitizeCommandResult = this.sanitizeCommandResult.bind(this);
+    this.write = this.write.bind(this);
   }
 
   //https://github.com/microsoft/node-pty/issues/429
@@ -70,34 +76,47 @@ export class Terminal {
     return _1;
   }
 
-  set onoutput(onOutput: (commandResult: CommandResult) => void) {
-    this._pty?.onData((cmdStr: string) => {
-      cmdStr = this.sanitizeCommandResult(cmdStr);
-      const commandResult: CommandResult = {
-        type: "RSLT",
-        data: cmdStr,
-      };
-      onOutput(commandResult);
-    });
-  }
-  set onclose(onClose: (ev: any) => void) {
-    this._pty?.onExit(onClose);
-  }
 
   write(data: Command) {
     this.history.push(data);
-    this._pty!.write(data.data);
+    if (data.type === "CREATE_CONTAINER") {
+      execSync(`docker rm -f ${this.name}`);
+      const image = data.data;
+      this._pty = pty.spawn(
+        "docker",
+        ["run", "-it", "--privileged", "--name=" + this.name, image, "bash"],
+        {}
+      );
+      this._pty?.onData((cmdStr: string) => {
+        cmdStr = this.sanitizeCommandResult(cmdStr);
+        const commandResult: CommandResult = {
+          type: "RSLT",
+          data: cmdStr,
+        };
+        this.onoutput(commandResult);
+      });
+      this._pty?.onExit(this.onclose);
+      return;
+    } else if (data.type === "CMD") {
+      this._pty && this._pty!.write(data.data);
+    }
   }
 }
 
 export class PseudoTerminal {
   history: Array<Command> = [];
   rl: readline.Interface;
+  onExitCallback: () => void;
 
   constructor() {
     this.rl = readline.createInterface({
       input: process.stdin,
     });
+    this.print = this.print.bind(this);
+  }
+  onExit(cb: () => void) {
+    process.on("SIGINT", cb);
+    this.onExitCallback = cb;
   }
   onType(onInput: (command: Command) => void) {
     this.rl.on("line", (line) => {
@@ -112,5 +131,8 @@ export class PseudoTerminal {
 
   print(result: CommandResult) {
     process.stdout.write(result.data);
+    if (clearANSIFormatting(result.data).trim() === "exit") {
+      this.onExitCallback && this.onExitCallback();
+    }
   }
 }
